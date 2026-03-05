@@ -8,7 +8,7 @@ export default function Canvas({socket}) {
   const [isDrawing, setIsDrawing] = useState(false);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
+    const canvas = canvasRef.current; 
     
     // We multiply by 2 and scale to prevent blurry lines on high-resolution screens (like Retina displays)
     canvas.width = 800 * 2;
@@ -40,11 +40,21 @@ export default function Canvas({socket}) {
       contextRef.current.stroke();
     });
 
+    socket.on('clear-canvas', clearCanvas)
+
     return () => {
       socket.off('start-drawing');
       socket.off('drawing');
     }
   }, [socket]);
+
+  const clearCanvas = () => {
+    const canvas = canvasRef.current;
+    const context = contextRef.current;
+    context.clearRect(0,0, canvas.width,canvas.height);
+
+    socket.emit('clear-canvas');
+  }
 
   const startDrawing = ({ nativeEvent }) => {
     const { offsetX, offsetY } = nativeEvent;
@@ -75,13 +85,29 @@ export default function Canvas({socket}) {
   };
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', marginTop: '20px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: '20px' }}>
+      <button 
+        onClick={clearCanvas}
+        style={{
+          marginBottom: '10px',
+          padding: '10px 20px',
+          backgroundColor: '#ef4444',
+          color: 'white',
+          border: 'none',
+          borderRadius: '5px',
+          cursor: 'pointer',
+          fontWeight: 'bold'
+        }}
+      >
+        🗑️ 
+      </button>
+
       <canvas
         ref={canvasRef}
-        onMouseDown={startDrawing} 
-        onMouseUp={finishDrawing} 
+        onMouseDown={startDrawing}
+        onMouseUp={finishDrawing}
         onMouseMove={draw}
-        onMouseLeave={finishDrawing} // Stops drawing if the mouse drags off the canvas
+        onMouseLeave={finishDrawing}
         style={{ border: "2px solid #333", cursor: "crosshair", backgroundColor: "#fff" }}
       />
     </div>
