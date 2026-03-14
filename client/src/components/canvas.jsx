@@ -1,15 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from "react";
 
-export default function Canvas({socket}) {
-  // We use refs here because we need to mutate these values directly 
+export default function Canvas({ socket, roomId }) {
+  // We use refs here because we need to mutate these values directly
   // without triggering a full component re-render every time the mouse moves.
   const canvasRef = useRef(null);
   const contextRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
 
   useEffect(() => {
-    const canvas = canvasRef.current; 
-    
+    const canvas = canvasRef.current;
+
     // We multiply by 2 and scale to prevent blurry lines on high-resolution screens (like Retina displays)
     canvas.width = 800 * 2;
     canvas.height = 600 * 2;
@@ -21,40 +21,46 @@ export default function Canvas({socket}) {
     context.lineCap = "round";
     context.strokeStyle = "black";
     context.lineWidth = 5;
-    
+
     // Store the context in a ref so our drawing functions can access it
     contextRef.current = context;
   }, []);
 
-  useEffect(()=> {
+  useEffect(() => {
     // Listen for incoming drawing data from the server and draw it on the canvas
-    if(!socket) return;
+    if (!socket) return;
 
-    socket.on('start-drawing', ({offsetX,offsetY})=> {
+    socket.on("start-drawing", ({ offsetX, offsetY }) => {
       contextRef.current.beginPath();
-      contextRef.current.moveTo(offsetX,offsetY);
+      contextRef.current.moveTo(offsetX, offsetY);
     });
 
-    socket.on('drawing', ({offsetX,offsetY})=> {
-      contextRef.current.lineTo(offsetX,offsetY);
+    socket.on("drawing", ({ offsetX, offsetY }) => {
+      contextRef.current.lineTo(offsetX, offsetY);
       contextRef.current.stroke();
     });
 
-    socket.on('clear-canvas', clearCanvas)
+    socket.on("clear-canvas", clearCanvasLocal);
 
     return () => {
-      socket.off('start-drawing');
-      socket.off('drawing');
-    }
+      socket.off("start-drawing");
+      socket.off("drawing");
+      socket.off("clear-canvas");
+    };
   }, [socket]);
 
-  const clearCanvas = () => {
+  const clearCanvasLocal = () => {
     const canvas = canvasRef.current;
     const context = contextRef.current;
-    context.clearRect(0,0, canvas.width,canvas.height);
+    context.clearRect(0, 0, canvas.width, canvas.height);
+  };
 
-    socket.emit('clear-canvas');
-  }
+  const clearCanvas = () => {
+    clearCanvasLocal();
+    if (socket) {
+      socket.emit("clear-canvas", { roomId });
+    }
+  };
 
   const startDrawing = ({ nativeEvent }) => {
     const { offsetX, offsetY } = nativeEvent;
@@ -64,7 +70,9 @@ export default function Canvas({socket}) {
     setIsDrawing(true);
 
     //Broadcast the start of a new drawing to the server
-    socket.emit('start-drawing', {offsetX,offsetY}); //we send the coordinates of the mouse click to the server so it can broadcast it to other clients
+    if (socket) {
+      socket.emit("start-drawing", { roomId, data: { offsetX, offsetY } }); //we send the coordinates of the mouse click to the server so it can broadcast it to other clients
+    }
   };
 
   const finishDrawing = () => {
@@ -74,32 +82,41 @@ export default function Canvas({socket}) {
 
   const draw = ({ nativeEvent }) => {
     if (!isDrawing) return;
-    
+
     // If we are drawing, draw a line to the new mouse coordinates and add ink (stroke)
     const { offsetX, offsetY } = nativeEvent;
     contextRef.current.lineTo(offsetX, offsetY);
-    contextRef.current.stroke(); 
+    contextRef.current.stroke();
 
     //Broadcast the drawing data
-    socket.emit('drawing' , {offsetX,offsetY});
+    if (socket) {
+      socket.emit("drawing", { roomId, data: { offsetX, offsetY } });
+    }
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: '20px' }}>
-      <button 
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        marginTop: "20px",
+      }}
+    >
+      <button
         onClick={clearCanvas}
         style={{
-          marginBottom: '10px',
-          padding: '10px 20px',
-          backgroundColor: '#ef4444',
-          color: 'white',
-          border: 'none',
-          borderRadius: '5px',
-          cursor: 'pointer',
-          fontWeight: 'bold'
+          marginBottom: "10px",
+          padding: "10px 20px",
+          backgroundColor: "#ef4444",
+          color: "white",
+          border: "none",
+          borderRadius: "5px",
+          cursor: "pointer",
+          fontWeight: "bold",
         }}
       >
-        🗑️ 
+        🗑️
       </button>
 
       <canvas
@@ -108,7 +125,11 @@ export default function Canvas({socket}) {
         onMouseUp={finishDrawing}
         onMouseMove={draw}
         onMouseLeave={finishDrawing}
-        style={{ border: "2px solid #333", cursor: "crosshair", backgroundColor: "#fff" }}
+        style={{
+          border: "2px solid #333",
+          cursor: "crosshair",
+          backgroundColor: "#fff",
+        }}
       />
     </div>
   );
